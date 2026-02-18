@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Result Analyzer | DYC EduWorks</title>
+  <meta name="description" content="Class-wise student result analysis with GPA calculation and paper toppers." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+  <!-- ═══ HEADER ═══ -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-icon">
+          <svg width="26" height="26" viewBox="0 0 28 28" fill="none">
+            <rect width="28" height="28" rx="8" fill="url(#lg1)" />
+            <path d="M7 14L11 18L21 8" stroke="white" stroke-width="2.5" stroke-linecap="round"
+              stroke-linejoin="round" />
+            <defs>
+              <linearGradient id="lg1" x1="0" y1="0" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#4F8EF7" />
+                <stop offset="1" stop-color="#7C3AED" />
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div class="logo-text">
+          <span class="logo-title">Result Analyzer</span>
+          <span class="logo-sub">DYC EduWorks</span>
+        </div>
+      </div>
+      <nav class="header-nav">
+        <button class="nav-btn active" id="nav-analyzer" onclick="showPage('analyzer')">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M2 12l4-4 3 3 5-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+              stroke-linejoin="round" />
+          </svg>
+          Analyzer
+        </button>
+        <button class="nav-btn" id="nav-credits" onclick="showPage('credits')">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+          </svg>
+          Credits Manager
+        </button>
+      </nav>
+      <div class="header-badge">
+        <span class="badge-dot" id="badge-dot"></span>
+        <span id="api-status-text">Connecting...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ═══ PAGE: ANALYZER ═══ -->
+  <main class="main" id="page-analyzer">
+
+    <!-- Upload Section -->
+    <section class="upload-section">
+      <div class="section-header">
+        <h1 class="page-title">Upload Result Sheet</h1>
+        <p class="page-desc">
+          Required: <code>reg_no</code> <code>p_code</code> <code>total</code> <code>total_max</code>
+          <code>result</code>
+          &nbsp;·&nbsp; Students auto-grouped by reg_no prefix (last 3 chars stripped)
+          &nbsp;·&nbsp; GPA ranked by weighted credits
+        </p>
+      </div>
+
+      <div class="upload-card">
+        <div class="drop-zone" id="drop-zone">
+          <div class="drop-icon">
+            <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
+              <circle cx="26" cy="26" r="26" fill="rgba(79,142,247,0.1)" />
+              <path d="M26 34V18M26 18L20 24M26 18L32 24" stroke="#4F8EF7" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" />
+              <path d="M16 36H36" stroke="#4F8EF7" stroke-width="2" stroke-linecap="round" />
+            </svg>
+          </div>
+          <p class="drop-title">Drag & Drop your file here</p>
+          <p class="drop-sub">or click to browse</p>
+          <p class="drop-formats">Supports: .xlsx · .xls · .csv</p>
+          <input type="file" id="file-input" accept=".xlsx,.xls,.csv" hidden />
+        </div>
+        <div class="file-info hidden" id="file-info">
+          <span class="file-emoji">📊</span>
+          <div class="file-details">
+            <span class="file-name" id="file-name-display"></span>
+            <span class="file-size" id="file-size-display"></span>
+          </div>
+          <button class="btn-icon-only" id="btn-clear">✕</button>
+        </div>
+        <div class="upload-actions">
+          <button class="btn btn-primary" id="btn-analyze" disabled>
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+              <path d="M2 8h12M8 2l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                stroke-linejoin="round" />
+            </svg>
+            Analyze Results
+          </button>
+          <button class="btn btn-secondary" id="btn-export" disabled>
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+              <path d="M8 2v9M4 8l4 4 4-4M2 14h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                stroke-linejoin="round" />
+            </svg>
+            Export to Excel
+          </button>
+        </div>
+      </div>
+
+      <div class="error-banner hidden" id="error-banner">
+        <span>⚠</span><span id="error-message"></span>
+        <button id="error-close">✕</button>
+      </div>
+    </section>
+
+    <!-- Loading -->
+    <div class="loading-overlay hidden" id="loading-overlay">
+      <div class="loading-card">
+        <div class="spinner"></div>
+        <p id="loading-text">Analyzing results...</p>
+      </div>
+    </div>
+
+    <!-- ═══ CREDITS MISSING MODAL ═══ -->
+    <div class="modal-overlay hidden" id="credits-modal">
+      <div class="modal">
+        <div class="modal-header">
+          <h2 class="modal-title">⚠ Credits Missing</h2>
+          <p class="modal-desc">The following paper codes don't have credits in the database. Please enter the credit
+            points for each paper to proceed with GPA calculation.</p>
+        </div>
+        <div class="modal-body" id="credits-modal-body">
+          <!-- Rows injected here -->
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="modal-cancel">Cancel</button>
+          <button class="btn btn-primary" id="modal-save">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path d="M2 8l4 4 8-8" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" />
+            </svg>
+            Save & Analyze
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ STUDENT DETAIL MODAL ═══ -->
+    <div class="modal-overlay hidden" id="student-modal">
+      <div class="modal" style="max-width: 800px;">
+        <div class="modal-header">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; width:100%">
+            <div>
+              <h2 class="modal-title" style="color:var(--blue); font-size:20px" id="sm-name">Student Name</h2>
+              <p class="modal-desc" id="sm-reg">REG_NO</p>
+            </div>
+            <div id="sm-gpa-badge"></div>
+          </div>
+        </div>
+        <div class="modal-body">
+          <div class="sm-info-grid">
+            <div class="sm-info-item"><span>Class</span><strong id="sm-class">—</strong></div>
+            <div class="sm-info-item"><span>Degree</span><strong id="sm-degree">—</strong></div>
+            <div class="sm-info-item"><span>Year</span><strong id="sm-year">—</strong></div>
+            <div class="sm-info-item"><span>Status</span><strong id="sm-status">—</strong></div>
+          </div>
+
+          <div style="margin-top:20px">
+            <h3 style="font-size:14px; margin-bottom:10px; color:var(--text-secondary)">Subject Details</h3>
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Code</th>
+                    <th>Subject</th>
+                    <th>Mark</th>
+                    <th>Max</th>
+                    <th>GP</th>
+                    <th>Credit</th>
+                    <th>Result</th>
+                  </tr>
+                </thead>
+                <tbody id="sm-subjects-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="student-modal-close">Close Marksheet</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ RESULTS ═══ -->
+    <section class="results-section hidden" id="results-section">
+
+      <!-- Stats -->
+      <div class="stats-grid">
+        <div class="stat-card" data-color="blue">
+          <div class="stat-icon">👥</div>
+          <div class="stat-body"><span class="stat-val" id="stat-total">—</span><span class="stat-lbl">Total
+              Students</span></div>
+        </div>
+        <div class="stat-card" data-color="green">
+          <div class="stat-icon">✅</div>
+          <div class="stat-body"><span class="stat-val" id="stat-passed">—</span><span class="stat-lbl">Passed</span>
+          </div>
+        </div>
+        <div class="stat-card" data-color="red">
+          <div class="stat-icon">❌</div>
+          <div class="stat-body"><span class="stat-val" id="stat-failed">—</span><span class="stat-lbl">Failed /
+              Arrear</span></div>
+        </div>
+        <div class="stat-card" data-color="purple">
+          <div class="stat-icon">📈</div>
+          <div class="stat-body"><span class="stat-val" id="stat-pass-pct">—</span><span class="stat-lbl">Pass
+              Percentage</span></div>
+        </div>
+        <div class="stat-card" data-color="orange">
+          <div class="stat-icon">🎯</div>
+          <div class="stat-body"><span class="stat-val" id="stat-avg-gpa">—</span><span class="stat-lbl">Class Avg
+              GPA</span></div>
+        </div>
+        <div class="stat-card" data-color="teal">
+          <div class="stat-icon">🏫</div>
+          <div class="stat-body"><span class="stat-val" id="stat-classes">—</span><span class="stat-lbl">Classes
+              Detected</span></div>
+        </div>
+      </div>
+
+      <!-- Class Overview -->
+      <div class="section-block">
+        <h2 class="block-title">🏫 Class Overview</h2>
+        <div class="class-overview-grid" id="class-overview-grid"></div>
+      </div>
+
+      <!-- Top 3 Overall -->
+      <div class="section-block">
+        <h2 class="block-title">🏆 Top Performers — Overall (by GPA)</h2>
+        <div class="top-cards" id="top-cards-overall"></div>
+      </div>
+
+      <!-- Main Tabs -->
+      <div class="tabs-container">
+        <div class="tabs-header" id="main-tabs-header">
+          <button class="tab-btn active" data-tab="class-wise">🏫 Class-wise</button>
+          <button class="tab-btn" data-tab="overall">📋 Overall Rankings</button>
+          <button class="tab-btn" data-tab="subjects">📖 Subject Analysis</button>
+          <button class="tab-btn" data-tab="toppers">🥇 Paper Toppers</button>
+        </div>
+
+        <!-- Class-wise Tab -->
+        <div class="tab-content active" id="tab-content-class-wise">
+          <div class="class-pills" id="class-pills"></div>
+          <div id="class-panel-container"></div>
+        </div>
+
+        <!-- Overall Tab -->
+        <div class="tab-content" id="tab-content-overall">
+          <div class="table-toolbar">
+            <div class="search-box">
+              <span>🔍</span>
+              <input type="text" id="overall-search" placeholder="Search Reg No or Name..." />
+            </div>
+            <div class="filter-group">
+              <label>Filter:</label>
+              <select id="overall-filter">
+                <option value="all">All Students</option>
+                <option value="PASS">Passed Only</option>
+                <option value="FAIL">Failed Only</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead id="overall-thead"></thead>
+              <tbody id="overall-tbody"></tbody>
+            </table>
+          </div>
+          <div class="table-footer"><span id="overall-count-lbl"></span></div>
+        </div>
+
+        <!-- Subjects Tab -->
+        <div class="tab-content" id="tab-content-subjects">
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Paper Code</th>
+                  <th>Credits</th>
+                  <th>Total Students</th>
+                  <th>Passed</th>
+                  <th>Failed</th>
+                  <th>Pass %</th>
+                  <th>Avg Mark</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="subject-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Toppers Tab -->
+        <div class="tab-content" id="tab-content-toppers">
+          <div class="sub-tabs-header">
+            <button class="sub-tab-btn active" data-subtab="toppers-overall">Overall Toppers</button>
+            <button class="sub-tab-btn" data-subtab="toppers-classwise">Class-wise Toppers</button>
+          </div>
+          <div class="sub-tab-content active" id="sub-tab-content-toppers-overall">
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Paper Code</th>
+                    <th>Reg No</th>
+                    <th>Name</th>
+                    <th>Class</th>
+                    <th>Mark</th>
+                    <th>Max</th>
+                    <th>Result</th>
+                    <th>Student GPA</th>
+                  </tr>
+                </thead>
+                <tbody id="toppers-overall-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="sub-tab-content" id="sub-tab-content-toppers-classwise">
+            <div id="classwise-toppers-container"></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <!-- ═══ PAGE: CREDITS MANAGER ═══ -->
+  <main class="main hidden" id="page-credits">
+    <div class="section-header">
+      <h1 class="page-title">Credits Manager</h1>
+      <p class="page-desc">Search, view, and edit credit points for each paper code. Credits are used for GPA
+        calculation.</p>
+    </div>
+
+    <div class="credits-toolbar">
+      <div class="search-box" style="flex:1;max-width:400px">
+        <span>🔍</span>
+        <input type="text" id="credits-search" placeholder="Search by Paper Code..." />
+      </div>
+      <button class="btn btn-primary" id="btn-add-credit">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+        </svg>
+        Add Paper
+      </button>
+      <button class="btn btn-secondary" id="btn-bulk-credit">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <path d="M2 4h12M2 8h12M2 12h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+        </svg>
+        Bulk Update
+      </button>
+    </div>
+
+    <!-- Bulk Update Form -->
+    <div class="add-credit-form hidden" id="bulk-credit-form">
+      <div class="form-group" style="width:100%; margin-bottom:15px">
+        <label>Bulk Input (Format: <code>PAPER_CODE,CREDITS</code> - one per line)</label>
+        <textarea id="bulk-input" rows="6" placeholder="U25PG507CAP01,4&#10;U25PG507CAP02,3.5&#10;U25PG507CAP03,2"
+          style="width:100%; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-primary); padding:12px; font-family:monospace; outline:none; font-size:13px; resize:vertical;"></textarea>
+      </div>
+      <div class="acf-actions">
+        <button class="btn btn-primary" id="btn-bulk-save">Process Bulk Update</button>
+        <button class="btn btn-secondary" id="btn-bulk-cancel">Cancel</button>
+      </div>
+      <p style="font-size:11px; color:var(--text-muted); margin-top:10px;">
+        💡 You can paste comma-separated values. Example: <code>CODE1,4</code> or <code>CODE1, 4</code>
+      </p>
+    </div>
+
+    <!-- Add / Edit inline form -->
+    <div class="add-credit-form hidden" id="add-credit-form">
+      <div class="acf-inner">
+        <div class="form-group">
+          <label>Paper Code</label>
+          <input type="text" id="acf-pcode" placeholder="e.g. U25PG507CAP01" />
+        </div>
+        <div class="form-group">
+          <label>Credits</label>
+          <input type="number" id="acf-credits" placeholder="e.g. 4" min="0" step="0.5" />
+        </div>
+        <div class="acf-actions">
+          <button class="btn btn-primary" id="acf-save">Save</button>
+          <button class="btn btn-secondary" id="acf-cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Credits Table -->
+    <div class="credits-card">
+      <div class="table-wrapper">
+        <table class="data-table" id="credits-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Paper Code</th>
+              <th>Credits</th>
+              <th>Last Updated</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="credits-tbody"></tbody>
+        </table>
+      </div>
+      <div class="table-footer">
+        <span id="credits-count-lbl">Loading...</span>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <p>© 2025 DYC EduWorks · Result Analyzer v2.1</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+
+</html>
