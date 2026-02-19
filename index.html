@@ -52,10 +52,10 @@
           Credits Manager
         </button>
       </nav>
-      <div class="header-badge">
+      <!-- <div class="header-badge">
         <span class="badge-dot" id="badge-dot"></span>
         <span id="api-status-text">Connecting...</span>
-      </div>
+      </div> -->
     </div>
   </header>
 
@@ -86,8 +86,38 @@
           </div>
           <p class="drop-title">Drag & Drop your file here</p>
           <p class="drop-sub">or click to browse</p>
-          <p class="drop-formats">Supports: .xlsx · .xls · .csv</p>
+          <p class="drop-formats">
+            Supports: .xlsx · .xls · .csv &nbsp;|&nbsp;
+            <a href="#" id="btn-template" class="template-link">Download Template</a>
+          </p>
           <input type="file" id="file-input" accept=".xlsx,.xls,.csv" hidden />
+        </div>
+
+        <!-- Calculation Mode -->
+        <div class="calc-mode-section">
+          <p class="calc-label">Select Calculation Mode:</p>
+          <div class="calc-options">
+            <label class="calc-opt">
+              <input type="radio" name="calc_type" value="cgpa" checked>
+              <div class="calc-opt-box">
+                <span class="opt-icon">🎓</span>
+                <div class="opt-text">
+                  <strong>With CGPA</strong>
+                  <span>Uses paper credits for weighted calculation</span>
+                </div>
+              </div>
+            </label>
+            <label class="calc-opt">
+              <input type="radio" name="calc_type" value="average">
+              <div class="calc-opt-box">
+                <span class="opt-icon">📊</span>
+                <div class="opt-text">
+                  <strong>With Average Mark</strong>
+                  <span>Simple calculation based only on marks</span>
+                </div>
+              </div>
+            </label>
+          </div>
         </div>
         <div class="file-info hidden" id="file-info">
           <span class="file-emoji">📊</span>
@@ -259,12 +289,19 @@
 
         <!-- Class-wise Tab -->
         <div class="tab-content active" id="tab-content-class-wise">
+          <div class="table-toolbar">
+            <div class="search-box">
+              <span>🔍</span>
+              <input type="text" id="class-wise-search" placeholder="Search Reg No or Name in this class..." />
+            </div>
+          </div>
           <div class="class-pills" id="class-pills"></div>
           <div id="class-panel-container"></div>
         </div>
 
         <!-- Overall Tab -->
         <div class="tab-content" id="tab-content-overall">
+          <div class="class-pills" id="year-pills" style="margin-bottom: 20px;"></div>
           <div class="table-toolbar">
             <div class="search-box">
               <span>🔍</span>
@@ -290,12 +327,18 @@
 
         <!-- Subjects Tab -->
         <div class="tab-content" id="tab-content-subjects">
+          <div class="table-toolbar">
+            <div class="search-box">
+              <span>🔍</span>
+              <input type="text" id="subjects-search" placeholder="Search Paper Code..." />
+            </div>
+          </div>
           <div class="table-wrapper">
             <table class="data-table">
               <thead>
                 <tr>
                   <th>Paper Code</th>
-                  <th>Credits</th>
+                  <th id="th-credits">Credits</th>
                   <th>Total Students</th>
                   <th>Passed</th>
                   <th>Failed</th>
@@ -311,6 +354,12 @@
 
         <!-- Toppers Tab -->
         <div class="tab-content" id="tab-content-toppers">
+          <div class="table-toolbar">
+            <div class="search-box">
+              <span>🔍</span>
+              <input type="text" id="toppers-search" placeholder="Search Paper Code, Reg No or Name..." />
+            </div>
+          </div>
           <div class="sub-tabs-header">
             <button class="sub-tab-btn active" data-subtab="toppers-overall">Overall Toppers</button>
             <button class="sub-tab-btn" data-subtab="toppers-classwise">Class-wise Toppers</button>

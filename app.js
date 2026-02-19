@@ -38,6 +38,7 @@ const errorMessage = $('error-message');
 const errorClose = $('error-close');
 const loadingOverlay = $('loading-overlay');
 const resultsSection = $('results-section');
+const btnTemplate = $('btn-template');
 
 // Modal Elements
 const creditsModal = $('credits-modal');
@@ -107,9 +108,11 @@ function gpaColor(gpa) {
   return 'var(--red)';
 }
 
-function gpaBadge(gpa) {
-  const color = gpaColor(gpa);
-  return `<span class="badge" style="background:${color}22; color:${color}; border:1px solid ${color}33; font-weight:800">${gpa.toFixed(2)}</span>`;
+function gpaBadge(val, forcePercentage = false) {
+  const isCgpa = analysisData && analysisData.calc_type === 'cgpa' && !forcePercentage;
+  const displayVal = isCgpa ? val.toFixed(2) : val.toFixed(1) + '%';
+  const color = isCgpa ? gpaColor(val) : (val >= 75 ? 'var(--green)' : val >= 50 ? 'var(--orange)' : 'var(--red)');
+  return `<span class="badge" style="background:${color}22; color:${color}; border:1px solid ${color}33; font-weight:800">${displayVal}</span>`;
 }
 
 function resultBadge(r) {
@@ -155,6 +158,12 @@ function clearFile() {
   btnExport.disabled = true;
   resultsSection.classList.add('hidden');
   analysisData = null;
+  // Clear all searches
+  $('overall-search').value = '';
+  $('class-wise-search').value = '';
+  $('subjects-search').value = '';
+  $('toppers-search').value = '';
+  $('year-pills').innerHTML = '';
 }
 
 dropZone.addEventListener('click', () => fileInput.click());
@@ -165,6 +174,11 @@ dropZone.addEventListener('drop', e => {
   if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
 });
 fileInput.addEventListener('change', () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
+btnTemplate.addEventListener('click', (e) => {
+  e.preventDefault();
+  window.location.href = `${API_BASE}/template`;
+});
+
 btnClear.addEventListener('click', clearFile);
 
 // ─── Error ───────────────────────────────────────────────────
@@ -182,8 +196,10 @@ async function performAnalysis() {
   hideError();
   showLoading();
 
+  const calcType = document.querySelector('input[name="calc_type"]:checked').value;
   const fd = new FormData();
   fd.append('file', currentFile);
+  fd.append('calc_type', calcType);
 
   try {
     const res = await fetch(`${API_BASE}/analyze`, { method: 'POST', body: fd });
@@ -440,13 +456,18 @@ window.showStudentDetails = (regNo) => {
   const s = analysisData.student_summary.find(x => x.reg_no == regNo);
   if (!s) return;
 
+  const isCgpa = analysisData.calc_type === 'cgpa';
   $('sm-name').textContent = s.name || 'Student';
   $('sm-reg').textContent = s.reg_no;
-  $('sm-gpa-badge').innerHTML = gpaBadge(s.gpa);
+  $('sm-gpa-badge').innerHTML = gpaBadge(isCgpa ? s.gpa : s.avg_percentage);
   $('sm-class').textContent = s.class_prefix;
   $('sm-degree').textContent = s.degree || '—';
   $('sm-year').textContent = s.year || '—';
   $('sm-status').innerHTML = resultBadge(s.overall_result);
+
+  // Toggle column visibility in modal
+  const modalCreditTh = document.querySelector('#student-modal th:nth-child(6)');
+  if (modalCreditTh) modalCreditTh.style.display = isCgpa ? '' : 'none';
 
   $('sm-subjects-body').innerHTML = s.subjects.map(subj => `
         <tr>
@@ -455,7 +476,7 @@ window.showStudentDetails = (regNo) => {
             <td><strong>${subj.total}</strong></td>
             <td>${subj.total_max}</td>
             <td>${subj.grade_point.toFixed(2)}</td>
-            <td>${subj.credits || '—'}</td>
+            ${isCgpa ? `<td>${subj.credits || '—'}</td>` : ''}
             <td>${resultBadge(subj.result)}</td>
         </tr>
     `).join('');
@@ -471,7 +492,8 @@ function renderAll(data) {
   renderClassOverview(data.class_stats);
   renderTop3(data.top3_overall, 'top-cards-overall');
   renderClassWiseTab(data);
-  renderOverallTable(data.student_summary);
+  renderYearPills(data);
+  filterOverall();
   renderSubjectTable(data.subject_summary);
   renderToppers(data.paper_toppers, data.class_toppers);
 }
@@ -481,8 +503,9 @@ function renderOverallStats(stats, numClasses, numSubjects) {
   $('stat-passed').textContent = stats.passed_students;
   $('stat-failed').textContent = stats.failed_students;
   $('stat-pass-pct').textContent = stats.overall_pass_percentage + '%';
-  $('stat-avg-gpa').textContent = (stats.avg_gpa || 0).toFixed(2);
+  $('stat-avg-gpa').textContent = analysisData.calc_type === 'cgpa' ? (stats.avg_gpa || 0).toFixed(2) : (stats.avg_class_percentage || 0).toFixed(1) + '%';
   $('stat-classes').textContent = numClasses;
+  document.querySelector('.stat-card[data-color="orange"] .stat-lbl').textContent = analysisData.calc_type === 'cgpa' ? 'Class Avg GPA' : 'Class Avg %';
 }
 
 function renderClassOverview(classStats) {
@@ -494,7 +517,7 @@ function renderClassOverview(classStats) {
               <div class="coc-prefix">${cs.class_prefix}</div>
               <div class="coc-row"><span>Students</span><strong>${cs.total_students}</strong></div>
               <div class="coc-row"><span>Pass %</span><strong style="color:${color}">${cs.pass_percentage}%</strong></div>
-              <div class="coc-row"><span>Avg GPA</span><strong>${(cs.avg_gpa || 0).toFixed(2)}</strong></div>
+              <div class="coc-row"><span>${analysisData.calc_type === 'cgpa' ? 'Avg GPA' : 'Avg %'}</span><strong>${analysisData.calc_type === 'cgpa' ? (cs.avg_gpa || 0).toFixed(2) : (cs.avg_percentage || 0).toFixed(1) + '%'}</strong></div>
               <div class="coc-pass-bar">
                 <div class="coc-pass-fill" style="width:${cs.pass_percentage}%;background:${color}"></div>
               </div>
@@ -515,7 +538,7 @@ function renderTop3(students, containerId) {
                 <div class="top-card-reg">${s.reg_no}</div>
                 <div class="top-card-name">${s.name || 'Student'}</div>
                 <div class="top-card-cls">${s.class_prefix}</div>
-                <div style="margin-top:5px">${gpaBadge(s.gpa)}</div>
+                <div style="margin-top:5px">${gpaBadge(analysisData.calc_type === 'cgpa' ? s.gpa : s.avg_percentage)}</div>
               </div>
             </div>`;
   });
@@ -538,6 +561,8 @@ function renderClassWiseTab(data) {
       pill.classList.add('active');
       document.querySelectorAll('.class-panel').forEach(p => p.classList.remove('active'));
       document.getElementById(`class-panel-${cls}`).classList.add('active');
+      // Clear search when switching classes
+      $('class-wise-search').value = '';
     };
     pillsContainer.appendChild(pill);
 
@@ -558,9 +583,11 @@ function buildClassPanel(cls, data) {
         <div class="class-panel-header">
             <div class="class-panel-title">Class: <span style="color:var(--blue)">${cls}</span></div>
             <div class="class-panel-stats">
-                <div class="cps-item">👥 <strong>${stats.total_students}</strong></div>
-                <div class="cps-item">📈 <strong>${stats.pass_percentage}%</strong> Pass</div>
-                <div class="cps-item">🎯 <strong>GPA ${(stats.avg_gpa || 0).toFixed(2)}</strong></div>
+                <div class="cps-item" title="Total Students">👥 <strong>${stats.total_students}</strong></div>
+                <div class="cps-item" title="Passed Students" style="color:var(--green)">✅ <strong>${stats.passed_students}</strong></div>
+                <div class="cps-item" title="Failed Students" style="color:var(--red)">❌ <strong>${stats.failed_students}</strong></div>
+                <div class="cps-item" title="Pass Percentage">📈 <strong>${stats.pass_percentage}%</strong> Pass</div>
+                <div class="cps-item" title="Average Score">🎯 <strong>${analysisData.calc_type === 'cgpa' ? (stats.avg_gpa || 0).toFixed(2) : (stats.avg_percentage || 0).toFixed(1) + '%'}</strong></div>
             </div>
         </div>
         <div class="class-top3">
@@ -570,7 +597,7 @@ function buildClassPanel(cls, data) {
                     <div class="top-card-info">
                         <strong>${s.reg_no}</strong>
                         <div style="font-size:11px">${s.name || ''}</div>
-                        ${gpaBadge(s.gpa)}
+                        ${gpaBadge(s.avg_percentage, true)}
                     </div>
                 </div>
             `).join('')}
@@ -578,15 +605,15 @@ function buildClassPanel(cls, data) {
         <div class="table-wrapper">
             <table class="data-table">
                 <thead><tr>
-                    <th>Rank</th><th>Reg No</th><th>Name</th><th>GPA</th><th>Result</th>
+                    <th>Rank</th><th>Reg No</th><th>Name</th><th>${data.calc_type === 'cgpa' ? 'GPA' : 'Score'}</th><th>Result</th>
                 </tr></thead>
-                <tbody>
+                <tbody class="class-panel-tbody">
                     ${students.map(s => `
                         <tr onclick="showStudentDetails('${s.reg_no}')">
                             <td>${rankCell(s.class_rank)}</td>
                             <td><strong>${s.reg_no}</strong></td>
                             <td>${s.name || '—'}</td>
-                            <td>${gpaBadge(s.gpa)}</td>
+                            <td>${gpaBadge(data.calc_type === 'cgpa' ? s.gpa : s.avg_percentage)}</td>
                             <td>${resultBadge(s.overall_result)}</td>
                         </tr>
                     `).join('')}
@@ -596,29 +623,52 @@ function buildClassPanel(cls, data) {
     `;
 }
 
+function renderYearPills(data) {
+  const container = $('year-pills');
+  container.innerHTML = '';
+  if (!data.years || data.years.length === 0) return;
+
+  data.years.forEach((year, idx) => {
+    const pill = document.createElement('button');
+    pill.className = 'class-pill' + (idx === 0 ? ' active' : '');
+    pill.textContent = year + ' Overall Ranking';
+    pill.dataset.year = year;
+    pill.onclick = () => {
+      document.querySelectorAll('#year-pills .class-pill').forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      filterOverall();
+    };
+    container.appendChild(pill);
+  });
+}
+
 function renderOverallTable(students) {
   const tbody = $('overall-tbody');
   const thead = $('overall-thead');
-  thead.innerHTML = `<tr><th>Rank</th><th>Reg No</th><th>Name</th><th>Class</th><th>GPA</th><th>Avg %</th><th>Result</th></tr>`;
+  const isCgpa = analysisData.calc_type === 'cgpa';
+  const scoreHeader = isCgpa ? 'GPA' : 'Score (%)';
+  thead.innerHTML = `<tr><th>Rank</th><th>Reg No</th><th>Name</th><th>Class</th><th>${scoreHeader}</th><th>Avg %</th><th>Result</th></tr>`;
   tbody.innerHTML = students.map(s => `
         <tr onclick="showStudentDetails('${s.reg_no}')">
             <td>${rankCell(s.overall_rank)}</td>
             <td><strong>${s.reg_no}</strong></td>
             <td>${s.name || '—'}</td>
             <td><code>${s.class_prefix}</code></td>
-            <td>${gpaBadge(s.gpa)}</td>
+            <td>${gpaBadge(isCgpa ? s.gpa : s.avg_percentage)}</td>
             <td>${s.avg_percentage}%</td>
             <td>${resultBadge(s.overall_result)}</td>
         </tr>
     `).join('');
-  $('overall-count-lbl').textContent = `Total ${students.length} students ranked by GPA`;
+  $('overall-count-lbl').textContent = `Showing ${students.length} students ranked in this selection`;
 }
 
 function renderSubjectTable(subjects) {
+  const isCgpa = analysisData.calc_type === 'cgpa';
+  $('th-credits').classList.toggle('hidden', !isCgpa);
   $('subject-tbody').innerHTML = subjects.map(sub => `
         <tr>
             <td><strong>${sub.p_code}</strong></td>
-            <td><span class="gpa-badge">${sub.credits || '—'}</span></td>
+            ${isCgpa ? `<td><span class="gpa-badge">${sub.credits || '—'}</span></td>` : ''}
             <td>${sub.total_students}</td>
             <td>${sub.passed}</td>
             <td>${sub.failed}</td>
@@ -630,6 +680,7 @@ function renderSubjectTable(subjects) {
 }
 
 function renderToppers(overall, classToppers) {
+  const isCgpa = analysisData.calc_type === 'cgpa';
   $('toppers-overall-tbody').innerHTML = overall.map(t => `
         <tr onclick="showStudentDetails('${t.reg_no}')">
             <td><strong>${t.p_code}</strong></td>
@@ -639,7 +690,7 @@ function renderToppers(overall, classToppers) {
             <td><strong>${t.mark}</strong></td>
             <td>${t.total_max}</td>
             <td>${resultBadge(t.result)}</td>
-            <td>${gpaBadge(t.gpa)}</td>
+            <td>${gpaBadge(isCgpa ? t.gpa : (t.mark / t.total_max * 100))}</td>
         </tr>
     `).join('');
 
@@ -649,7 +700,7 @@ function renderToppers(overall, classToppers) {
             <div class="cw-topper-title">${cls}</div>
             <div class="table-wrapper">
                 <table class="data-table">
-                    <thead><tr><th>Paper Code</th><th>Reg No</th><th>Name</th><th>Mark</th><th>GPA</th></tr></thead>
+                    <thead><tr><th>Paper Code</th><th>Reg No</th><th>Name</th><th>Mark</th><th>${isCgpa ? 'GPA' : 'Score'}</th></tr></thead>
                     <tbody>
                         ${list.map(t => `
                             <tr onclick="showStudentDetails('${t.reg_no}')">
@@ -657,7 +708,7 @@ function renderToppers(overall, classToppers) {
                                 <td>${t.reg_no}</td>
                                 <td>${t.name}</td>
                                 <td><strong>${t.mark}</strong></td>
-                                <td>${gpaBadge(t.gpa)}</td>
+                                <td>${gpaBadge(isCgpa ? t.gpa : (t.mark / t.total_max * 100))}</td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -671,8 +722,10 @@ function renderToppers(overall, classToppers) {
 btnExport.addEventListener('click', async () => {
   if (!currentFile) return;
   showLoading('Exporting...');
+  const calcType = document.querySelector('input[name="calc_type"]:checked').value;
   const fd = new FormData();
   fd.append('file', currentFile);
+  fd.append('calc_type', calcType);
   try {
     const res = await fetch(`${API_BASE}/export`, { method: 'POST', body: fd });
     if (!res.ok) throw new Error('Export failed');
@@ -707,3 +760,87 @@ document.querySelectorAll('.sub-tab-btn').forEach(btn => {
     $(`sub-tab-content-${btn.dataset.subtab}`).classList.add('active');
   };
 });
+
+// ─── SEARCH HANDLERS ───────────────────────────────────────────
+
+$('overall-search').oninput = filterOverall;
+$('overall-filter').onchange = filterOverall;
+
+function filterOverall() {
+  if (!analysisData) return;
+  const q = $('overall-search').value.toLowerCase();
+  const res = $('overall-filter').value;
+
+  const activeYearPill = document.querySelector('#year-pills .class-pill.active');
+  const activeYear = activeYearPill ? activeYearPill.dataset.year : null;
+
+  const filtered = analysisData.student_summary.filter(s => {
+    const matchQ = s.reg_no.toLowerCase().includes(q) || (s.name && s.name.toLowerCase().includes(q));
+    const matchRes = res === 'all' || s.overall_result === res;
+    const matchYear = !activeYear || s.year_prefix === activeYear;
+    return matchQ && matchRes && matchYear;
+  });
+  renderOverallTable(filtered);
+}
+
+$('class-wise-search').oninput = () => {
+  if (!analysisData) return;
+  const q = $('class-wise-search').value.toLowerCase();
+  const activePill = document.querySelector('.class-pill.active');
+  if (!activePill) return;
+  const cls = activePill.textContent;
+  const panel = $(`class-panel-${cls}`);
+  const rows = panel.querySelectorAll('.class-panel-tbody tr');
+
+  rows.forEach(row => {
+    const text = row.textContent.toLowerCase();
+    row.style.display = text.includes(q) ? '' : 'none';
+  });
+};
+
+$('subjects-search').oninput = () => {
+  if (!analysisData) return;
+  const q = $('subjects-search').value.toLowerCase();
+  const filtered = analysisData.subject_summary.filter(s => s.p_code.toLowerCase().includes(q));
+  renderSubjectTable(filtered);
+};
+
+$('toppers-search').oninput = () => {
+  if (!analysisData) return;
+  const q = $('toppers-search').value.toLowerCase();
+
+  const filteredOverall = analysisData.paper_toppers.filter(t =>
+    t.p_code.toLowerCase().includes(q) || t.reg_no.toLowerCase().includes(q) || (t.name && t.name.toLowerCase().includes(q))
+  );
+  renderToppersTableOnly(filteredOverall);
+
+  // For class-wise toppers, we'll filter sections
+  const container = $('classwise-toppers-container');
+  const sections = container.querySelectorAll('.cw-topper-section');
+  sections.forEach(sec => {
+    const rows = sec.querySelectorAll('tbody tr');
+    let anyVisible = false;
+    rows.forEach(row => {
+      const match = row.textContent.toLowerCase().includes(q);
+      row.style.display = match ? '' : 'none';
+      if (match) anyVisible = true;
+    });
+    sec.style.display = anyVisible ? '' : 'none';
+  });
+};
+
+function renderToppersTableOnly(overall) {
+  const isCgpa = analysisData.calc_type === 'cgpa';
+  $('toppers-overall-tbody').innerHTML = overall.map(t => `
+          <tr onclick="showStudentDetails('${t.reg_no}')">
+              <td><strong>${t.p_code}</strong></td>
+              <td>${t.reg_no}</td>
+              <td>${t.name}</td>
+              <td><code>${t.class_prefix}</code></td>
+              <td><strong>${t.mark}</strong></td>
+              <td>${t.total_max}</td>
+              <td>${resultBadge(t.result)}</td>
+              <td>${gpaBadge(isCgpa ? t.gpa : (t.mark / t.total_max * 100))}</td>
+          </tr>
+      `).join('');
+}
