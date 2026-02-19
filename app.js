@@ -2,7 +2,7 @@
    RESULT ANALYZER v2.1 — app.js
    ============================================================ */
 
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = 'https://result-analyzer-aljx.onrender.com/api';
 
 // ─── State ───────────────────────────────────────────────────
 let currentFile = null;
