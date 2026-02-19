@@ -46,6 +46,10 @@ def get_class_prefix(reg_no, suffix_len=3):
     s = str(reg_no).strip()
     return s[:-suffix_len] if len(s) > suffix_len else s
 
+def get_year_prefix(reg_no):
+    s = str(reg_no).strip()
+    return s[:3] if len(s) >= 3 else s
+
 def is_pass(r):
     return str(r).strip().upper() in PASS_VARIANTS
 
@@ -101,14 +105,13 @@ def get_all_credits():
 # CORE COMPUTATION
 # ─────────────────────────────────────────────────────────────
 
-def compute_student_summary(df, credits_map):
+def compute_student_summary(df, credits_map, calc_type='cgpa'):
     """
     For each student compute:
     - total_obtained, total_max, num_subjects, arrear_count, overall_result
     - avg_percentage (simple)
-    - GPA = Σ(grade_point_i × credit_i) / Σ(credit_i)
-    - grade_point per subject
-    Rank by GPA (desc). Students with no credits data fall back to avg_percentage.
+    - calc_type: 'cgpa' uses Σ(GP * Credits) / Σ(Credits). 'average' uses avg_pct / 10.
+    Rank by gpa (or average point) desc.
     """
     df = df.copy()
     df['result'] = df['result'].astype(str).str.strip().str.upper()
@@ -139,11 +142,15 @@ def compute_student_summary(df, credits_map):
             weighted_sum  += gp * float(credit)
             total_credits += float(credit)
 
-        if has_credits and total_credits > 0:
-            gpa = round(weighted_sum / total_credits, 2)
+        if calc_type == 'cgpa':
+            if has_credits and total_credits > 0:
+                gpa = round(weighted_sum / total_credits, 2)
+            else:
+                gpa = round(avg_pct / 10, 2)
         else:
-            # Fallback: simple avg / 10
+            # Average marks mode: use avg_pct / 10
             gpa = round(avg_pct / 10, 2)
+            has_credits = True  # Ignore credit availability in this mode
 
         subjects = []
         for _, subj_row in group.iterrows():
@@ -167,6 +174,7 @@ def compute_student_summary(df, credits_map):
         row = {
             'reg_no':         reg_no,
             'class_prefix':   get_class_prefix(reg_no),
+            'year_prefix':    get_year_prefix(reg_no),
             'total_obtained': total_obtained,
             'total_max':      total_max,
             'num_subjects':   num_subjects,
@@ -185,16 +193,21 @@ def compute_student_summary(df, credits_map):
 
     summary = pd.DataFrame(rows)
     # Sort by GPA desc
-    summary = summary.sort_values('gpa', ascending=False).reset_index(drop=True)
+    summary = summary.sort_values(['year_prefix', 'gpa'], ascending=[True, False]).reset_index(drop=True)
 
-    # Overall rank (PASS only)
-    ranks, counter = [], 1
-    for _, r in summary.iterrows():
-        if r['overall_result'] == 'PASS':
-            ranks.append(counter); counter += 1
-        else:
-            ranks.append(None)
-    summary['overall_rank'] = ranks
+    # Global Overall rank (PASS only)
+    # Actually, let's keep it global if needed, but the user wants it split.
+    # Let's add 'year_rank' instead.
+    for y_prefix, y_group in summary.groupby('year_prefix'):
+        sorted_indices = y_group.sort_values('gpa', ascending=False).index
+        counter = 1
+        for idx in sorted_indices:
+            if summary.loc[idx, 'overall_result'] == 'PASS':
+                summary.loc[idx, 'overall_rank'] = counter
+                counter += 1
+            else:
+                summary.loc[idx, 'overall_rank'] = None
+
     return summary
 
 
@@ -402,19 +415,25 @@ def apply_rank_result_colors(ws, rank_col_idx, result_col_idx):
         except: pass
 
 
-def write_student_sheet(writer, df, sheet_name, rank_col='class_rank'):
+def write_student_sheet(writer, df, sheet_name, rank_col='class_rank', calc_type='cgpa'):
     export = df.copy()
     col_order = [rank_col, 'reg_no']
     for opt in ['name', 'degree', 'colcode', 'year']:
         if opt in export.columns: col_order.append(opt)
-    col_order += ['num_subjects', 'total_obtained', 'total_max', 'avg_percentage', 'gpa', 'arrear_count', 'overall_result']
+    
+    if calc_type == 'cgpa':
+        col_order += ['num_subjects', 'total_obtained', 'total_max', 'avg_percentage', 'gpa', 'arrear_count', 'overall_result']
+    else:
+        col_order += ['num_subjects', 'total_obtained', 'total_max', 'avg_percentage', 'arrear_count', 'overall_result']
+    
     col_order = [c for c in col_order if c in export.columns]
     export = export[col_order]
+    
     rename = {
         rank_col: 'Rank', 'reg_no': 'Reg No', 'name': 'Name',
         'degree': 'Degree', 'colcode': 'College Code', 'year': 'Year',
         'num_subjects': 'Subjects', 'total_obtained': 'Marks Obtained',
-        'total_max': 'Max Marks', 'avg_percentage': 'Avg %',
+        'total_max': 'Max Marks', 'avg_percentage': 'Percentage (%)' if calc_type == 'average' else 'Avg %',
         'gpa': 'GPA', 'arrear_count': 'Arrears', 'overall_result': 'Result',
     }
     export.rename(columns=rename, inplace=True)
@@ -426,12 +445,17 @@ def write_student_sheet(writer, df, sheet_name, rank_col='class_rank'):
     apply_rank_result_colors(ws, headers.index('Rank') + 1, headers.index('Result') + 1)
 
 
-def write_subject_sheet(writer, df, sheet_name='Subject Analysis'):
+def write_subject_sheet(writer, df, sheet_name='Subject Analysis', calc_type='cgpa'):
     rename = {
         'p_code': 'Paper Code', 'credits': 'Credits',
         'total_students': 'Total Students', 'passed': 'Passed',
         'failed': 'Failed', 'pass_percentage': 'Pass %', 'avg_mark': 'Avg Mark',
     }
+    if calc_type == 'average':
+        if 'credits' in df.columns:
+            df = df.drop(columns=['credits'])
+        if 'Credits' in rename:
+            del rename['credits']
     export = df.rename(columns=rename)
     export.to_excel(writer, sheet_name=sheet_name[:31], index=False)
     ws = writer.sheets[sheet_name[:31]]
@@ -448,14 +472,18 @@ def write_subject_sheet(writer, df, sheet_name='Subject Analysis'):
             except: pass
 
 
-def write_toppers_sheet(writer, toppers, sheet_name):
+def write_toppers_sheet(writer, toppers, sheet_name, calc_type='cgpa'):
     if not toppers: return
     df = pd.DataFrame(toppers)
     rename = {
         'p_code': 'Paper Code', 'reg_no': 'Reg No', 'name': 'Name',
         'class_prefix': 'Class', 'mark': 'Mark', 'total_max': 'Max',
-        'result': 'Result', 'gpa': 'Student GPA',
+        'result': 'Result', 'gpa': 'Student GPA' if calc_type == 'cgpa' else 'Percentage %',
     }
+    if calc_type == 'average':
+        if 'gpa' in df.columns:
+            # Show actual percentage for toppers
+             pass # mapping already changed in rename
     col_order = [c for c in rename if c in df.columns]
     export = df[col_order].rename(columns=rename)
     export.to_excel(writer, sheet_name=sheet_name[:31], index=False)
@@ -470,7 +498,7 @@ def write_toppers_sheet(writer, toppers, sheet_name):
             elif c.value == 'FAIL': c.font = FAIL_FONT
 
 
-def write_class_toppers_sheet(writer, class_toppers, sheet_name):
+def write_class_toppers_sheet(writer, class_toppers, sheet_name, calc_type='cgpa'):
     rows = []
     for cls, toppers in sorted(class_toppers.items()):
         for t in toppers:
@@ -478,7 +506,7 @@ def write_class_toppers_sheet(writer, class_toppers, sheet_name):
                 'Class': cls, 'Paper Code': t['p_code'],
                 'Reg No': t['reg_no'], 'Name': t.get('name', '—'),
                 'Mark': t['mark'], 'Max': t['total_max'],
-                'Result': t['result'], 'Student GPA': t.get('gpa', '—'),
+                'Result': t['result'], 'Final Score': t.get('gpa', '—') if calc_type == 'cgpa' else t.get('avg_percentage', '—'),
             })
     if not rows: return
     df = pd.DataFrame(rows)
@@ -580,13 +608,15 @@ def analyze():
         return jsonify({'error': 'No file selected'}), 400
 
     try:
+        calc_type   = request.form.get('calc_type', 'cgpa')
+
         df = read_and_prepare(file)
         p_codes     = list(df['p_code'].unique())
-        credits_map = get_credits_from_db(p_codes)
-        missing     = [p for p in p_codes if p not in credits_map]
+        credits_map = get_credits_from_db(p_codes) if calc_type == 'cgpa' else {}
+        missing     = [p for p in p_codes if p not in credits_map] if calc_type == 'cgpa' else []
 
-        # If credits missing, return partial response asking for them
-        if missing:
+        # If credits missing and in cgpa mode, return partial response
+        if calc_type == 'cgpa' and missing:
             return jsonify({
                 'credits_missing': True,
                 'missing_p_codes': missing,
@@ -594,8 +624,8 @@ def analyze():
                 'all_p_codes':     p_codes,
             }), 202  # 202 = needs more info
 
-        # All credits available — full analysis
-        student_summary  = compute_student_summary(df, credits_map)
+        # All info available — full analysis
+        student_summary  = compute_student_summary(df, credits_map, calc_type=calc_type)
         class_summaries  = compute_class_summaries(student_summary)
         subject_summary  = compute_subject_summary(df, credits_map)
         paper_toppers    = compute_paper_toppers(df, student_summary)
@@ -627,9 +657,11 @@ def analyze():
             'top3_overall':     top3.to_dict(orient='records'),
             'class_top3':       class_top3,
             'classes':          sorted(class_summaries.keys()),
+            'years':            sorted(student_summary['year_prefix'].unique().tolist()),
             'columns_found':    list(df.columns),
             'total_subjects':   len(subject_summary),
             'credits_used':     credits_map,
+            'calc_type':        calc_type,
         }
         
         # FINAL PASS: Remove all NaNs recursively
@@ -649,14 +681,16 @@ def export():
     file = request.files['file']
 
     try:
+        calc_type   = request.form.get('calc_type', 'cgpa')
+
         df = read_and_prepare(file)
         p_codes     = list(df['p_code'].unique())
-        credits_map = get_credits_from_db(p_codes)
-        missing     = [p for p in p_codes if p not in credits_map]
-        if missing:
-            return jsonify({'error': f'Credits missing for: {", ".join(missing)}. Please set credits first.'}), 400
+        credits_map = get_credits_from_db(p_codes) if calc_type == 'cgpa' else {}
+        missing     = [p for p in p_codes if p not in credits_map] if calc_type == 'cgpa' else []
+        if calc_type == 'cgpa' and missing:
+            return jsonify({'error': f'Credits missing for: {", ".join(missing)}. Please set credits or use Average Mark mode.'}), 400
 
-        student_summary = compute_student_summary(df, credits_map)
+        student_summary = compute_student_summary(df, credits_map, calc_type=calc_type)
         class_summaries = compute_class_summaries(student_summary)
         subject_summary = compute_subject_summary(df, credits_map)
         paper_toppers   = compute_paper_toppers(df, student_summary)
@@ -664,12 +698,12 @@ def export():
 
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            write_student_sheet(writer, student_summary, 'Overall Rankings', rank_col='overall_rank')
+            write_student_sheet(writer, student_summary, 'Overall Rankings', rank_col='overall_rank', calc_type=calc_type)
             for prefix, cls_df in sorted(class_summaries.items()):
-                write_student_sheet(writer, cls_df, f'Class {prefix}'[:31], rank_col='class_rank')
-            write_subject_sheet(writer, subject_summary, 'Subject Analysis')
-            write_toppers_sheet(writer, paper_toppers, 'Paper Toppers (Overall)')
-            write_class_toppers_sheet(writer, class_toppers, 'Paper Toppers (Class-wise)')
+                write_student_sheet(writer, cls_df, f'Class {prefix}'[:31], rank_col='class_rank', calc_type=calc_type)
+            write_subject_sheet(writer, subject_summary, 'Subject Analysis', calc_type=calc_type)
+            write_toppers_sheet(writer, paper_toppers, 'Paper Toppers (Overall)', calc_type=calc_type)
+            write_class_toppers_sheet(writer, class_toppers, 'Paper Toppers (Class-wise)', calc_type=calc_type)
             df.to_excel(writer, sheet_name='Raw Data', index=False)
             style_sheet(writer.sheets['Raw Data'])
 
@@ -683,6 +717,59 @@ def export():
 
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/template', methods=['GET'])
+def get_template():
+    """Generate and return a sample Excel template."""
+    try:
+        # Create a sample dataframe with necessary columns
+        data = {
+            'reg_no': [],
+            'name': [],
+            'p_code': [],
+            'total': [],
+            'total_max': [],
+            'result': [],
+            'degree': [],
+            'year': []
+        }
+        df = pd.DataFrame(data)
+        
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Template')
+            ws = writer.sheets['Template']
+            
+            # Style header
+            for cell in ws[1]:
+                cell.fill = HEADER_FILL
+                cell.font = HEADER_FONT
+                cell.alignment = CENTER
+                cell.border = THIN_BORDER
+            
+            # Adjust column widths
+            for col in ws.columns:
+                max_length = 0
+                column = col[0].column_letter
+                for cell in col:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except: pass
+                adjusted_width = (max_length + 2)
+                ws.column_dimensions[column].width = adjusted_width
+
+        output.seek(0)
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name='result_template.xlsx'
+        )
     except Exception as e:
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
