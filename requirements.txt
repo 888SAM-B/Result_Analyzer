@@ -5,4 +5,5 @@ openpyxl
 xlrd
 numpy
 pymongo
-dotenv
+python-dotenv
+gunicorn
