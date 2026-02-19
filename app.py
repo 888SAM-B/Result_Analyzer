@@ -16,6 +16,11 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
+# ─── Routes ──────────────────────────────────────────────────
+@app.route('/api/')
+def home():
+    return "Hello from result analyzer background"
+
 # ─── MongoDB ─────────────────────────────────────────────────
 MONGO_URI = os.getenv('MONGO_URI', 'mongodb://localhost:27017')
 MONGO_DB  = os.getenv('MONGO_DB',  'result_analyzer')
